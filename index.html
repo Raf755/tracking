@@ -1,0 +1,164 @@
+<!DOCTYPE html><html>
+<head>
+  <title>Pelacak Kereta</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body, #map { height: 100%; margin: 0; padding: 0; }
+    .info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 0, 0, 0.8);
+      color: white;
+      padding: 10px;
+      font-family: sans-serif;
+      z-index: 1000;
+      border-radius: 10px;
+    }
+    #keretaSelector {
+      margin-top: 5px;
+      font-size: 14px;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="info">
+    🚆 <span id="namaKereta">Pilih Kereta</span><br>
+    <select id="keretaSelector"></select>
+    <br>
+    📍 Stasiun berikutnya: <span id="nextStation">-</span><br>
+    ✏️ Jarak: <span id="distance">-</span> km<br>
+    🚉 Kecepatan: <span id="speed">0</span> km/jam
+  </div>  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>  <script>
+    const daftarKereta = {
+      "KA1": {
+        nama: "Argo Bromo Anggrek KA 1",
+        rute: [
+          ["Gambir", -6.176655, 106.830583],
+          ["Bekasi", -6.239467, 106.985393],
+          ["Cirebon", -6.717408, 108.553391],
+          ["Semarang Tawang", -6.984469, 110.475782],
+          ["Surabaya Pasar Turi", -7.245972, 112.730432]
+        ]
+      },
+      "KA2": {
+        nama: "Argo Bromo Anggrek KA 2",
+        rute: [
+          ["Surabaya Pasar Turi", -7.245972, 112.730432],
+          ["Semarang Tawang", -6.984469, 110.475782],
+          ["Cirebon", -6.717408, 108.553391],
+          ["Bekasi", -6.239467, 106.985393],
+          ["Gambir", -6.176655, 106.830583]
+        ]
+      },
+      "KA3": {
+        nama: "Kereta Banyubiru Solo Balapan → Semarang Tawang",
+        rute: [
+          ["Solo Balapan", -7.556111, 110.831389],
+          ["Gawok", -7.527778, 110.766667],
+          ["Delanggu", -7.552778, 110.6625],
+          ["Ceper", -7.648611, 110.6675],
+          ["Klaten", -7.705556, 110.606111],
+          ["Srowot", -7.728333, 110.608611],
+          ["Brambanan", -7.758056, 110.511111],
+          ["Maguwo", -7.783889, 110.438333],
+          ["Lempuyangan", -7.789722, 110.373056],
+          ["Yogyakarta", -7.789471, 110.36334],
+          ["Wates", -7.850556, 110.155833],
+          ["Kutoarjo", -7.711389, 109.999167],
+          ["Butuh", -7.660556, 109.911667],
+          ["Prembun", -7.657778, 109.849167],
+          ["Kutowinangun", -7.643056, 109.781944],
+          ["Gombong", -7.604722, 109.515],
+          ["Kebumen", -7.676944, 109.651944],
+          ["Karanganyar", -7.722222, 109.623889],
+          ["Soka", -7.741944, 109.634167],
+          ["Kutoarjo Lama", -7.711389, 109.999167],
+          ["Gundih", -7.264722, 110.785278],
+          ["Semarang Tawang", -6.984469, 110.475782]
+        ]
+      }
+    };
+
+    let ruteAktif = [];
+
+    const map = L.map('map').setView([-7.5, 110], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    const keretaMarker = L.marker([0,0]).addTo(map);
+
+    const keretaSelector = document.getElementById("keretaSelector");
+    for (let kode in daftarKereta) {
+      const opt = document.createElement("option");
+      opt.value = kode;
+      opt.text = daftarKereta[kode].nama;
+      keretaSelector.appendChild(opt);
+    }
+
+    keretaSelector.addEventListener("change", () => {
+      const kode = keretaSelector.value;
+      const kereta = daftarKereta[kode];
+      ruteAktif = kereta.rute;
+      document.getElementById("namaKereta").textContent = kereta.nama;
+      gambarRute();
+    });
+
+    function gambarRute() {
+      if (!ruteAktif.length) return;
+      ruteAktif.forEach(([nama, lat, lng]) => {
+        L.marker([lat, lng]).bindPopup(nama).addTo(map);
+      });
+      const latlngs = ruteAktif.map(([_, lat, lng]) => [lat, lng]);
+      L.polyline(latlngs, { color: 'red' }).addTo(map);
+    }
+
+    function getDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function cariStasiunBerikut(lat, lng) {
+      if (!ruteAktif.length) return { nama: '-', jarak: '-' };
+      for (let i = 0; i < ruteAktif.length; i++) {
+        const [nama, stLat, stLng] = ruteAktif[i];
+        if (getDistance(lat, lng, stLat, stLng) < 0.7) return { nama, jarak: 0 };
+      }
+      let terdekatIdx = 0;
+      let jarakMin = Infinity;
+      for (let i = 0; i < ruteAktif.length; i++) {
+        const [_, stLat, stLng] = ruteAktif[i];
+        const jarak = getDistance(lat, lng, stLat, stLng);
+        if (jarak < jarakMin) {
+          jarakMin = jarak;
+          terdekatIdx = i;
+        }
+      }
+      let idxBerikut = Math.min(terdekatIdx + 1, ruteAktif.length - 1);
+      const [nama, stLat, stLng] = ruteAktif[idxBerikut];
+      return { nama, jarak: getDistance(lat, lng, stLat, stLng).toFixed(2) };
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(pos => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const speed = pos.coords.speed || 0;
+        keretaMarker.setLatLng([lat, lng]);
+        map.setView([lat, lng], 12);
+        document.getElementById("speed").textContent = (speed * 3.6).toFixed(1);
+
+        const { nama, jarak } = cariStasiunBerikut(lat, lng);
+        document.getElementById("nextStation").textContent = nama;
+        document.getElementById("distance").textContent = jarak;
+      }, err => console.error(err));
+    } else {
+      alert("GPS tidak tersedia");
+    }
+  </script></body>
+  </html>
